@@ -34,6 +34,14 @@ app.post('/payment', async (req, res) => {
               allow_redirects: 'never',
             },
           });
+
+          // const paymentIntent = await stripe.paymentIntents.create({
+          //   amount: amount,
+          //   currency: 'usd',
+          //   payment_method: paymentMethodId,
+          //   confirmation_method: 'manual',
+          //   confirm: true,
+          // }); 
           
           
 
@@ -43,6 +51,33 @@ app.post('/payment', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+app.post('/create-payment-link', async (req, res) => {
+  try {
+    const { productName, amount } = req.body; // Add more fields as needed
+
+    // Create a Payment Link
+    const paymentLink = await stripe.paymentLinks.create({
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: productName,
+          },
+          unit_amount: amount,
+        },
+        quantity: 1,
+      }],
+      mode: 'payment',
+    });
+
+    res.json({ url: paymentLink.url });
+  } catch (err) {
+    console.error("Error during payment link creation:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 const PORT = process.env.PORT || 3001;
 
