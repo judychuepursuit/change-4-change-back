@@ -342,40 +342,40 @@ app.post('/payment', async (req, res) => {
 //     }
 // });
 
-app.post('/create-payment-link', async (req, res) => {
-  try {
-    const { productName, amount } = req.body;
+// app.post('/create-payment-link', async (req, res) => {
+//   try {
+//     const { productName, amount } = req.body;
 
-    if (!productName || !amount) {
-      return res.status(400).json({ error: 'Product name and amount are required.' });
-    }
+//     if (!productName || !amount) {
+//       return res.status(400).json({ error: 'Product name and amount are required.' });
+//     }
 
-    // Ensure amount is in cents
-    const productAmount = parseInt(amount) * 100;
+//     // Ensure amount is in cents
+//     const productAmount = parseInt(amount) * 100;
 
-    const product = await stripe.products.create({
-      name: productName,
-    });
+//     const product = await stripe.products.create({
+//       name: productName,
+//     });
 
-    const price = await stripe.prices.create({
-      unit_amount: productAmount,
-      currency: 'usd',
-      product: product.id,
-    });
+//     const price = await stripe.prices.create({
+//       unit_amount: productAmount,
+//       currency: 'usd',
+//       product: product.id,
+//     });
 
-    const paymentLink = await stripe.paymentLinks.create({
-      line_items: [{
-        price: price.id,
-        quantity: 1,
-      }],
-    });
+//     const paymentLink = await stripe.paymentLinks.create({
+//       line_items: [{
+//         price: price.id,
+//         quantity: 1,
+//       }],
+//     });
 
-    res.json({ url: paymentLink.url });
-  } catch (err) {
-    console.error("Error during payment link creation:", err);
-    res.status(500).json({ error: 'An error occurred while creating the payment link.' });
-  }
-});
+//     res.json({ url: paymentLink.url });
+//   } catch (err) {
+//     console.error("Error during payment link creation:", err);
+//     res.status(500).json({ error: 'An error occurred while creating the payment link.' });
+//   }
+// });
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (error, promise) => {
