@@ -1,166 +1,190 @@
+// require('dotenv').config();
+
+// const express = require('express');
+// const bodyParser = require('body-parser');
+// const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+// const cors = require('cors');
+
+// const app = express();
+
+// app.use(cors());
+// app.use(bodyParser.json());
+
+// app.get('/', (req, res) => {
+//     res.send('Hello World!');
+// });
+
+// // One-time Payment Endpoint
+// app.post('/create-payment-intent', async (req, res) => {
+//   const { amount, currency, payment_method, return_url } = req.body; // include return_url in the request body
+
+//   try {
+//     const paymentIntent = await stripe.paymentIntents.create({
+//       amount,
+//       currency,
+//       payment_method: payment_method,
+//       confirm: true,
+//       return_url, // specify the return_url for redirect after payment
+//     });
+//     res.status(200).send({ clientSecret: paymentIntent.client_secret });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+
+// // Subscription Endpoint with Payment Method Attachment
+// app.post('/create-subscription', async (req, res) => {
+//   const { customerId, paymentMethodId } = req.body; // Include paymentMethodId in the request body
+//   const priceId = 'price_1OC7w8Kw0bozpjFOGDdJwjGE';
+
+//   try {
+//     // Attach the Payment Method to the Customer
+//     const paymentMethod = await stripe.paymentMethods.attach(paymentMethodId, {
+//       customer: customerId,
+//     });
+    
+//     // Set the default Payment Method for the Customer
+//     await stripe.customers.update(customerId, {
+//       invoice_settings: {
+//         default_payment_method: paymentMethod.id,
+//       },
+//     });
+
+//     // Create the Subscription
+//     const subscription = await stripe.subscriptions.create({
+//       customer: customerId,
+//       items: [{ price: priceId }],
+//       expand: ['latest_invoice.payment_intent'],
+//     });
+
+//     res.status(200).send({
+//       subscriptionId: subscription.id,
+//       clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+//     });
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// });
+
+// // Endpoint to create a new Stripe customer
+// app.post('/create-customer', async (req, res) => {
+//   const { email } = req.body;
+
+//   try {
+//       const customer = await stripe.customers.create({
+//           email,
+//       });
+
+//       res.status(200).json({ customerId: customer.id });
+//   } catch (err) {
+//       res.status(500).json({ error: err.message });
+//   }
+// });
+
+// // Handle unhandled promise rejections
+// process.on('unhandledRejection', (error, promise) => {
+//     console.error('Unhandled Rejection at:', promise, 'reason:', error);
+// });
+
+// const PORT = process.env.PORT || 3001;
+
+// app.listen(PORT, () => {
+//     console.log(`Server started on port ${PORT}`);
+// });
+
+
+
+
+
+
+
 require('dotenv').config();
 
 const express = require('express');
 const bodyParser = require('body-parser');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const cors = require('cors');
+const pool = require('./db/dbConfig'); // Assuming dbConfig.js is in a folder named db
 
 const app = express();
 
 app.use(cors());
 app.use(bodyParser.json());
 
-app.get('/', (req, res) => {
-    res.send('Hello World!');
-});
 
-app.post('/payment', async (req, res) => {
-    try {
-        const { paymentMethodId, amount, firstName, lastName, email } = req.body;
 
-        // Validate request body
-        if (!paymentMethodId || !amount || !firstName || !lastName || !email) {
-            return res.status(400).json({ error: 'All fields are required.' });
-        }
-
-        // Convert amount to the smallest currency unit, e.g., cents
-        const paymentAmount = Math.round(parseFloat(amount) * 100);
-
-        const paymentIntent = await stripe.paymentIntents.create({
-            amount: paymentAmount,
-            currency: 'usd',
-            payment_method: paymentMethodId,
-            confirmation_method: 'manual',
-            confirm: true,
-            // Use a environment-specific URL for production
-            return_url: process.env.SUCCESS_URL || 'http://localhost:3000/payment-success',
-        });
-
-        // Only send necessary data to the client
-        res.json({ success: true, paymentIntentId: paymentIntent.id });
-    } catch (err) {
-        console.error("Payment error:", { error: err.message }); // Masked sensitive data from logs
-        res.status(500).json({ error: 'An error occurred while processing the payment.' });
+// Function to retrieve a charity's Stripe account ID
+const getCharityStripeAccountId = async (charityName) => {
+  try {
+    const queryText = 'SELECT stripe_account_id FROM charities WHERE name = $1';
+    const queryValues = [charityName];
+    const res = await pool.query(queryText, queryValues);
+    if (res.rows.length > 0) {
+      return res.rows[0].stripe_account_id;
+    } else {
+      throw new Error('Charity not found');
     }
-});
+  } catch (err) {
+    console.error('Error querying the database:', err);
+    throw err;
+  }
+};
 
-// app.post('/create-payment-link', async (req, res) => {
-//     try {
-//         const { productName, amount } = req.body;
+app.post('/create-payment-intent', async (req, res) => {
+  const { amount, currency, charityName, paymentMethodId, email, donationFrequency } = req.body;
 
-//         if (!productName || !amount) {
-//             return res.status(400).json({ error: 'Product name and amount are required.' });
-//         }
+  try {
+    // Create a Customer first if not exists
+    const customer = await stripe.customers.create({ email });
 
-//         // Convert amount to the smallest currency unit, e.g., cents
-//         const productAmount = Math.round(parseFloat(amount) * 100);
+    const charityStripeAccountId = await getCharityStripeAccountId(charityName);
+    // ... your code to create a payment intent using charityStripeAccountId ...
 
-//         // You would typically have product and price creation in an admin interface, not in the payment flow
-//         const product = await stripe.products.create({
-//             name: productName,
-//         });
 
-//         const price = await stripe.prices.create({
-//             unit_amount: productAmount,
-//             currency: 'usd',
-//             product: product.id,
-//         });
+    // Attach the Payment Method to the Customer
+    await stripe.paymentMethods.attach(paymentMethodId, { customer: customer.id });
+    
+    // Update Customer's default method
+    await stripe.customers.update(customer.id, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
 
-//         const paymentLink = await stripe.paymentLinks.create({
-//             line_items: [{ price: price.id, quantity: 1 }],
-//         });
+    let paymentIntent;
+    if (donationFrequency === 'one-time') {
+      // For one-time payments
+      paymentIntent = await stripe.paymentIntents.create({
+        amount: amount * 100, // Convert amount to cents
+        currency,
+        customer: customer.id,
+        payment_method: paymentMethodId, // Make sure this matches the POST body variable name
+        confirmation_method: 'manual',
+        confirm: true,
+        transfer_data: { destination: charityStripeAccountId }, // Direct payment to the charity's Stripe account
+      });
+    } else {
+      // For recurring subscriptions
+      const subscription = await stripe.subscriptions.create({
+        customer: customer.id,
+        items: [{ price: process.env.STRIPE_PRICE_ID }], // Your Stripe Price ID for recurring payments
+        transfer_data: { destination: charityStripeAccountId }, // Direct payment to the charity's Stripe account
+      });
+      paymentIntent = await stripe.paymentIntents.retrieve(
+        subscription.latest_invoice.payment_intent
+      );
+    }
 
-//         res.json({ url: paymentLink.url });
-//     } catch (err) {
-//         console.error("Payment link error:", { error: err.message });
-//         res.status(500).json({ error: 'An error occurred while creating the payment link.' });
-//     }
-// });
-
-// app.post('/create-payment-link', async (req, res) => {
-//     try {
-//         const { productName, amount } = req.body;
-
-//         if (!productName || !amount) {
-//             return res.status(400).json({ error: 'Product name and amount are required.' });
-//         }
-
-//         // Ensure the amount is in cents and is a valid number
-//         const productAmount = Math.round(Number(amount) * 100);
-//         if (isNaN(productAmount)) {
-//             return res.status(400).json({ error: 'Invalid amount provided.' });
-//         }
-
-//         // Create a product or look up the product by name if already created
-//         let product = await stripe.products.list({ name: productName });
-//         if (!product.data.length) {
-//             product = await stripe.products.create({ name: productName });
-//         } else {
-//             product = product.data[0]; // Use the existing product
-//         }
-
-//         // Create a price for the product
-//         const price = await stripe.prices.create({
-//             unit_amount: productAmount,
-//             currency: 'usd',
-//             product: product.id,
-//         });
-
-//         // Create the payment link
-//         const paymentLink = await stripe.paymentLinks.create({
-//             line_items: [{ price: price.id, quantity: 1 }],
-//         });
-
-//         res.json({ url: paymentLink.url });
-//     } catch (err) {
-//         console.error("Payment link error:", err);
-//         res.status(500).json({ error: 'An error occurred while creating the payment link.' });
-//     }
-// });
-
-// app.post('/create-payment-link', async (req, res) => {
-//   try {
-//     const { productName, amount } = req.body;
-
-//     if (!productName || !amount) {
-//       return res.status(400).json({ error: 'Product name and amount are required.' });
-//     }
-
-//     // Ensure amount is in cents
-//     const productAmount = parseInt(amount) * 100;
-
-//     const product = await stripe.products.create({
-//       name: productName,
-//     });
-
-//     const price = await stripe.prices.create({
-//       unit_amount: productAmount,
-//       currency: 'usd',
-//       product: product.id,
-//     });
-
-//     const paymentLink = await stripe.paymentLinks.create({
-//       line_items: [{
-//         price: price.id,
-//         quantity: 1,
-//       }],
-//     });
-
-//     res.json({ url: paymentLink.url });
-//   } catch (err) {
-//     console.error("Error during payment link creation:", err);
-//     res.status(500).json({ error: 'An error occurred while creating the payment link.' });
-//   }
-// });
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (error, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', error);
+    res.json({ clientSecret: paymentIntent.client_secret });
+  } catch (err) {
+    console.error('Error occurred while creating payment intent or subscription:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 const PORT = process.env.PORT || 3001;
-
 app.listen(PORT, () => {
-    console.log(`Server started on port ${PORT}`);
+  console.log(`Server started on port ${PORT}`);
 });
+
+
 
