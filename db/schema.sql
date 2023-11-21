@@ -3,6 +3,7 @@ CREATE DATABASE charities_dev;
 
 \c charities_dev;
 
+DROP TABLE IF EXISTS charities;
 
 CREATE TABLE charities (
   id SERIAL PRIMARY KEY,
