@@ -1,14 +1,13 @@
-// const pgp = require("pg-promise")();
-// require("dotenv").config();
+const { Pool } = require('pg');
+require('dotenv').config();
 
-// const cn = {
-//     host: process.env.PG_HOST,
-//     port: process.env.PG_PORT,
-//     database: process.env.PG_DATABASE,
-//     user: process.env.PG_USER,
-//     password: process.env.PG_PASSWORD,
-// };
+const pool = new Pool({
+  user: process.env.PG_USER,
+  host: process.env.PG_HOST,
+  database: process.env.PG_DATABASE,
+  password: process.env.PG_PASSWORD,
+  port: process.env.PG_PORT
+});
 
-// const db = pgp(cn);
+module.exports = pool;
 
-// module.exports = db;
