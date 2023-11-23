@@ -1,10 +1,10 @@
 require('dotenv').config();
-
 const express = require('express');
 const bodyParser = require('body-parser');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const cors = require('cors');
 const pool = require('./db/dbConfig'); 
+const { body, validationResult } = require('express-validator'); // Import the necessary functions
 const app = express();
 
 app.use(cors());
@@ -31,8 +31,22 @@ const getCharityStripeAccountId = async (charityName) => {
   }
 };
 
-app.post('/create-payment-intent', async (req, res) => {
-  const { amount, currency, charityName, paymentMethodId, email, donationFrequency } = req.body;
+app.post('/create-payment-intent', 
+  // Validation middleware
+  [
+    body('amount').isNumeric().withMessage('Amount must be numeric.'),
+    body('currency').isLength({ min: 3, max: 3 }).withMessage('Currency must be a 3-letter code.'),
+    body('email').isEmail().withMessage('Email must be valid.'),
+    body('donationFrequency').isIn(['one-time', 'monthly']).withMessage('Invalid donation frequency.'),
+    // Add additional validation as needed
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    // Proceed with your existing logic if validation passed
+    const { amount, currency, charityName, paymentMethodId, email, donationFrequency } = req.body;
 
   try {
     // Create a Customer first if not exists
@@ -91,8 +105,9 @@ app.post('/create-payment-intent', async (req, res) => {
     if (!res.headersSent) {
       res.status(500).json({ message: 'An error occurred', error: err.message });
     }
+    }
   }
-});
+);
 
 
 app.post('/stripe-webhook', express.raw({type: 'application/json'}), (request, response) => {
@@ -104,8 +119,6 @@ app.post('/stripe-webhook', express.raw({type: 'application/json'}), (request, r
   }
   // Handle the event
 });
-
-
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
