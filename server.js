@@ -111,13 +111,40 @@ app.post('/create-payment-intent',
 
 
 app.post('/stripe-webhook', express.raw({type: 'application/json'}), (request, response) => {
+  const sig = request.headers['stripe-signature'];
   let event;
+
   try {
-    event = stripe.webhooks.constructEvent(request.body, request.headers['stripe-signature'], endpointSecret);
+    event = stripe.webhooks.constructEvent(request.body, sig, process.env.STRIPE_ENDPOINT_SECRET);
   } catch (err) {
+    console.error(`Webhook Error: ${err.message}`);
     return response.status(400).send(`Webhook Error: ${err.message}`);
   }
+
   // Handle the event
+  switch (event.type) {
+    case 'charge.succeeded':
+      // Business logic for charge succeeded
+      break;
+    case 'invoice.payment_succeeded':
+      // Business logic for invoice payment succeeded
+      break;
+    case 'payment_intent.payment_failed':
+      // Business logic for payment intent payment failed
+      break;
+    case 'payment_intent.succeeded':
+      // Business logic for payment intent succeeded
+      break;
+    case 'payment_method.attached':
+      // Business logic for payment method attached
+      break;
+    default:
+      // Handle other event types
+      console.log(`Unhandled event type ${event.type}`);
+  }
+
+  // Return a response to acknowledge receipt of the event
+  response.json({received: true});
 });
 
 const PORT = process.env.PORT || 3001;
