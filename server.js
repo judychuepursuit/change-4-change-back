@@ -13,6 +13,20 @@ app.get('/', (req, res) => {
   res.send('Hello World!');
 });
 
+
+// In your existing Express app code
+
+app.get('/transactions', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM transactions');
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error retrieving transactions', err);
+    res.status(500).json({ message: 'Error retrieving transactions' });
+  }
+});
+
+
 // Function to retrieve a charity's Stripe account ID
 const getCharityStripeAccountId = async (charityName) => {
   console.log(charityName)
@@ -60,6 +74,10 @@ app.post('/create-payment-intent',
     const sanitizedCharityName = charityName.trim();
     const charityStripeAccountId = await getCharityStripeAccountId(sanitizedCharityName);
 
+    const charityIdRes = await pool.query("SELECT id FROM charities WHERE name = $1", [charityName]);
+    const charityId = charityIdRes.rows[0].id;
+  
+
     // const charityStripeAccountId = await getCharityStripeAccountId(charityName);
     // ... your code to create a payment intent using charityStripeAccountId ...
 
@@ -73,6 +91,7 @@ app.post('/create-payment-intent',
 
     let clientSecret;
     if (donationFrequency === 'one-time') {
+
       // For one-time payments
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount * 100, // Convert amount to cents
@@ -83,6 +102,10 @@ app.post('/create-payment-intent',
         confirm: true,
         transfer_data: { destination: charityStripeAccountId }, // Direct payment to the charity's Stripe account
         return_url: 'http://localhost:3000/payment-success', // Adjust the URL as needed
+        metadata: {
+          charity_id: charityId,
+          donation_frequency: donationFrequency
+        }
       });
       clientSecret = paymentIntent.client_secret;
     } else {
@@ -110,7 +133,7 @@ app.post('/create-payment-intent',
 );
 
 
-app.post('/stripe-webhook', express.raw({type: 'application/json'}), (request, response) => {
+app.post('/stripe-webhook', express.raw({type: 'application/json'}), async (request, response) => {
   const sig = request.headers['stripe-signature'];
   let event;
 
@@ -124,16 +147,33 @@ app.post('/stripe-webhook', express.raw({type: 'application/json'}), (request, r
   // Handle the event
   switch (event.type) {
     case 'charge.succeeded':
-      // Business logic for charge succeeded
-      break;
+    case 'payment_intent.succeeded':
+      {
+        // Business logic for payment intent succeeded
+        const paymentIntent = event.data.object;
+        // Insert into your database (example query, adjust accordingly)
+        const insertText = 'INSERT INTO transactions(charity_id, amount, currency, donation_frequency, stripe_payment_intent_id) VALUES($1, $2, $3, $4, $5)';
+        const insertValues = [
+          // Assume you have a way to get charity_id from paymentIntent metadata
+          paymentIntent.metadata.charity_id,
+          paymentIntent.amount / 100, // Convert from cents
+          paymentIntent.currency,
+          paymentIntent.metadata.donation_frequency,
+          paymentIntent.id
+        ];
+        try {
+          await pool.query(insertText, insertValues);
+        } catch (insertErr) {
+          console.error('Error saving to database:', insertErr);
+          // Decide how you want to handle errors
+        }
+        break;
+      }
     case 'invoice.payment_succeeded':
       // Business logic for invoice payment succeeded
       break;
     case 'payment_intent.payment_failed':
       // Business logic for payment intent payment failed
-      break;
-    case 'payment_intent.succeeded':
-      // Business logic for payment intent succeeded
       break;
     case 'payment_method.attached':
       // Business logic for payment method attached
@@ -146,6 +186,7 @@ app.post('/stripe-webhook', express.raw({type: 'application/json'}), (request, r
   // Return a response to acknowledge receipt of the event
   response.json({received: true});
 });
+
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
