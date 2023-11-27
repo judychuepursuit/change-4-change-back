@@ -5,27 +5,29 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const cors = require('cors');
 const pool = require('./db/dbConfig'); 
 const { body, validationResult } = require('express-validator'); // Import the necessary functions
+
 const app = express();
 
 app.use(cors());
-app.use(bodyParser.json());
+
+
 app.get('/', (req, res) => {
   res.send('Hello World!');
 });
 
-
-// In your existing Express app code
-
-app.get('/transactions', async (req, res) => {
+app.get('/transactions', bodyParser.json(), async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM transactions');
+    const result = await pool.query(
+      `SELECT t.amount, t.currency, t.donation_frequency, c.name, t.created_at
+      FROM transactions t 
+      JOIN charities c ON t.charity_id = c.id`
+    );
     res.json(result.rows);
   } catch (err) {
     console.error('Error retrieving transactions', err);
     res.status(500).json({ message: 'Error retrieving transactions' });
   }
 });
-
 
 // Function to retrieve a charity's Stripe account ID
 const getCharityStripeAccountId = async (charityName) => {
@@ -45,7 +47,7 @@ const getCharityStripeAccountId = async (charityName) => {
   }
 };
 
-app.post('/create-payment-intent', 
+app.post('/create-payment-intent', bodyParser.json(), 
   // Validation middleware
   [
     body('amount').isNumeric().withMessage('Amount must be numeric.'),
@@ -61,29 +63,24 @@ app.post('/create-payment-intent',
     }
     // Proceed with your existing logic if validation passed
     const { amount, currency, charityName, paymentMethodId, email, donationFrequency } = req.body;
-
   try {
     // Create a Customer first if not exists
     const customer = await stripe.customers.create({ email });
+
+    const sanitizedCharityName = charityName.trim();
+    const charityStripeAccountId = await getCharityStripeAccountId(sanitizedCharityName);
+    const charityIdRes = await pool.query("SELECT id FROM charities WHERE name = $1", [charityName]);
+    const charityId = charityIdRes.rows[0].id;
+
+    console.log("Charity ID:", charityId); // Log to check the charity ID
+
 
     // Validate and sanitize the charityName before querying the database
     if (typeof charityName !== 'string' || charityName.trim().length === 0) {
       return res.status(400).json({ error: 'Invalid charity name' });
     }
-    
-    const sanitizedCharityName = charityName.trim();
-    const charityStripeAccountId = await getCharityStripeAccountId(sanitizedCharityName);
-
-    const charityIdRes = await pool.query("SELECT id FROM charities WHERE name = $1", [charityName]);
-    const charityId = charityIdRes.rows[0].id;
-  
-
-    // const charityStripeAccountId = await getCharityStripeAccountId(charityName);
-    // ... your code to create a payment intent using charityStripeAccountId ...
-
     // Attach the Payment Method to the Customer
     await stripe.paymentMethods.attach(paymentMethodId, { customer: customer.id });
-    
     // Update Customer's default method
     await stripe.customers.update(customer.id, {
       invoice_settings: { default_payment_method: paymentMethodId },
@@ -91,7 +88,6 @@ app.post('/create-payment-intent',
 
     let clientSecret;
     if (donationFrequency === 'one-time') {
-
       // For one-time payments
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount * 100, // Convert amount to cents
@@ -107,7 +103,11 @@ app.post('/create-payment-intent',
           donation_frequency: donationFrequency
         }
       });
-      clientSecret = paymentIntent.client_secret;
+      // Send back the client secret and the status of the payment intent
+      res.json({ 
+        clientSecret: paymentIntent.client_secret, 
+        status: paymentIntent.status 
+      });
     } else {
         // For recurring subscriptions
         const subscription = await stripe.subscriptions.create({
@@ -117,10 +117,12 @@ app.post('/create-payment-intent',
           transfer_data: { destination: charityStripeAccountId }, // Direct payment to the charity's Stripe account
           expand: ['latest_invoice.payment_intent'], // Include the PaymentIntent in the response
         });
-        clientSecret = subscription.latest_invoice.payment_intent.client_secret;
-      }
+      res.json({
+        clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+        status: subscription.latest_invoice.payment_intent.status
+      });  
+    }
 
-    res.json({ clientSecret });
     console.log(clientSecret);
   } catch (err) {
     console.error('Error occurred while creating payment intent or subscription:', err);
@@ -132,17 +134,17 @@ app.post('/create-payment-intent',
   }
 );
 
-
+// Stripe Webhook handling
 app.post('/stripe-webhook', express.raw({type: 'application/json'}), async (request, response) => {
   const sig = request.headers['stripe-signature'];
   let event;
 
   try {
     event = stripe.webhooks.constructEvent(request.body, sig, process.env.STRIPE_ENDPOINT_SECRET);
-  } catch (err) {
-    console.error(`Webhook Error: ${err.message}`);
-    return response.status(400).send(`Webhook Error: ${err.message}`);
-  }
+  // } catch (err) {
+  //   console.error(`Webhook Error: ${err.message}`);
+  //   return response.status(400).send(`Webhook Error: ${err.message}`);
+  // }
 
   // Handle the event
   switch (event.type) {
@@ -185,7 +187,12 @@ app.post('/stripe-webhook', express.raw({type: 'application/json'}), async (requ
 
   // Return a response to acknowledge receipt of the event
   response.json({received: true});
+  } catch (err) {
+  console.error(`Webhook Error: ${err.message}`);
+  response.status(400).send(`Webhook Error: ${err.message}`);
+  } 
 });
+
 
 
 const PORT = process.env.PORT || 3001;

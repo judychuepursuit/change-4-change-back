@@ -5,5 +5,3 @@ INSERT INTO charities (name, stripe_account_id) VALUES
 ('Red Cross', 'acct_1OCtgDQRnTyfQud7'),
 ('UNICEF', 'acct_1OCtjmQS1DLaPBq0'); 
 
-
-
