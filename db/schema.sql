@@ -12,3 +12,15 @@ CREATE TABLE charities (
 );
 
 
+DROP TABLE IF EXISTS transactions;
+
+CREATE TABLE transactions (
+  id SERIAL PRIMARY KEY,
+  charity_id INTEGER REFERENCES charities(id),
+  amount DECIMAL NOT NULL,
+  currency VARCHAR(3) NOT NULL,
+  donation_frequency VARCHAR(255) NOT NULL,
+  stripe_payment_intent_id VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
