@@ -123,7 +123,7 @@ app.post('/create-payment-intent', bodyParser.json(),
       });  
     }
 
-    console.log(clientSecret);
+    // console.log(clientSecret);
   } catch (err) {
     console.error('Error occurred while creating payment intent or subscription:', err);
     // Check if headers have already been sent to avoid ERR_HTTP_HEADERS_SENT
