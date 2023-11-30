@@ -17,6 +17,7 @@ app.get('/', (req, res) => {
 
 app.get('/transactions', bodyParser.json(), async (req, res) => {
   try {
+    console.log("fetching transaction")
     const result = await pool.query(
       `SELECT t.amount, t.currency, t.donation_frequency, c.name, t.created_at
       FROM transactions t 
@@ -86,7 +87,7 @@ app.post('/create-payment-intent', bodyParser.json(),
       invoice_settings: { default_payment_method: paymentMethodId },
     });
 
-    let clientSecret;
+    // let clientSecret;
     if (donationFrequency === 'one-time') {
       // For one-time payments
       const paymentIntent = await stripe.paymentIntents.create({
@@ -184,7 +185,6 @@ app.post('/stripe-webhook', express.raw({type: 'application/json'}), async (requ
       // Handle other event types
       console.log(`Unhandled event type ${event.type}`);
   }
-
   // Return a response to acknowledge receipt of the event
   response.json({received: true});
   } catch (err) {
@@ -192,8 +192,6 @@ app.post('/stripe-webhook', express.raw({type: 'application/json'}), async (requ
   response.status(400).send(`Webhook Error: ${err.message}`);
   } 
 });
-
-
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
