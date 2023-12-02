@@ -17,6 +17,7 @@ app.get('/', (req, res) => {
 
 app.get('/transactions', bodyParser.json(), async (req, res) => {
   try {
+    console.log("fetching transaction")
     const result = await pool.query(
       `SELECT t.amount, t.currency, t.donation_frequency, c.name, t.created_at
       FROM transactions t 
@@ -63,6 +64,7 @@ app.post('/create-payment-intent', bodyParser.json(),
     }
     // Proceed with your existing logic if validation passed
     const { amount, currency, charityName, paymentMethodId, email, donationFrequency } = req.body;
+    console.log(amount, currency, charityName, paymentMethodId, email, donationFrequency)
   try {
     // Create a Customer first if not exists
     const customer = await stripe.customers.create({ email });
@@ -86,7 +88,7 @@ app.post('/create-payment-intent', bodyParser.json(),
       invoice_settings: { default_payment_method: paymentMethodId },
     });
 
-    let clientSecret;
+    // let clientSecret;
     if (donationFrequency === 'one-time') {
       // For one-time payments
       const paymentIntent = await stripe.paymentIntents.create({
@@ -135,12 +137,12 @@ app.post('/create-payment-intent', bodyParser.json(),
 );
 
 // Stripe Webhook handling
-app.post('/stripe-webhook', express.raw({type: 'application/json'}), async (request, response) => {
+app.post('/stripe-webhook', express.raw({ type: 'application/json' }), async (request, response) => {
   const sig = request.headers['stripe-signature'];
-  let event;
+  // let event;
 
   try {
-    event = stripe.webhooks.constructEvent(request.body, sig, process.env.STRIPE_ENDPOINT_SECRET);
+    const event = stripe.webhooks.constructEvent(request.body, sig, process.env.STRIPE_ENDPOINT_SECRET);
   // } catch (err) {
   //   console.error(`Webhook Error: ${err.message}`);
   //   return response.status(400).send(`Webhook Error: ${err.message}`);
@@ -148,23 +150,26 @@ app.post('/stripe-webhook', express.raw({type: 'application/json'}), async (requ
 
   // Handle the event
   switch (event.type) {
-    case 'charge.succeeded':
+    // case 'charge.succeeded':
     case 'payment_intent.succeeded':
       {
+        console.log(event.type)
         // Business logic for payment intent succeeded
         const paymentIntent = event.data.object;
+        // Extracting donation frequency from metadata or determining it some other way
+        const donationFrequency = paymentIntent.metadata.donation_frequency || 'one-time';
         // Insert into your database (example query, adjust accordingly)
         const insertText = 'INSERT INTO transactions(charity_id, amount, currency, donation_frequency, stripe_payment_intent_id) VALUES($1, $2, $3, $4, $5)';
         const insertValues = [
-          // Assume you have a way to get charity_id from paymentIntent metadata
           paymentIntent.metadata.charity_id,
           paymentIntent.amount / 100, // Convert from cents
           paymentIntent.currency,
-          paymentIntent.metadata.donation_frequency,
+          donationFrequency, // Use the extracted or default value
           paymentIntent.id
         ];
         try {
           await pool.query(insertText, insertValues);
+          console.log("inserttext insertvalues")
         } catch (insertErr) {
           console.error('Error saving to database:', insertErr);
           // Decide how you want to handle errors
@@ -184,16 +189,14 @@ app.post('/stripe-webhook', express.raw({type: 'application/json'}), async (requ
       // Handle other event types
       console.log(`Unhandled event type ${event.type}`);
   }
-
   // Return a response to acknowledge receipt of the event
-  response.json({received: true});
-  } catch (err) {
+  response.json({ received: true });
+} catch (err) {
   console.error(`Webhook Error: ${err.message}`);
   response.status(400).send(`Webhook Error: ${err.message}`);
-  } 
+}
+
 });
-
-
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
