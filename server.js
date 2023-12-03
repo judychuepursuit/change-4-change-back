@@ -1,3 +1,7 @@
+
+// DEPENDENCIES
+const app = require("./app.js");
+
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -6,7 +10,6 @@ const cors = require('cors');
 const pool = require('./db/dbConfig'); 
 const { body, validationResult } = require('express-validator'); // Import the necessary functions
 
-const app = express();
 
 app.use(cors());
 
@@ -202,6 +205,5 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server started on port ${PORT}`);
 });
-
 
 
