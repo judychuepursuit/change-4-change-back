@@ -1,5 +1,4 @@
-// const bcrypt = require('bcrypt');
-const db = require('../db/dbConfig');
+const pool = require('../db/dbConfig');
 
 const login = async (req, res) => {
   const { email, password } = req.body;
@@ -9,14 +8,13 @@ const login = async (req, res) => {
   }
 
   try {
-    const user = await db.oneOrNone('SELECT * FROM users WHERE email = $1', email);
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+
+    const user = result.rows[0];
 
     if (!user) {
       return res.status(401).json({ message: 'Invalid email' });
     }
-
-    // Compare the provided password with the hashed password from the database
-    // const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (user.password !== password) {
       return res.status(401).json({ message: 'Invalid password' });

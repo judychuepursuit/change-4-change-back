@@ -1,9 +1,3 @@
--- DROP DATABASE IF EXISTS change4change_dev;
--- CREATE DATABASE change4change_dev;
-
--- \c change4change_dev;
-
-
 DROP DATABASE IF EXISTS charities_dev;
 CREATE DATABASE charities_dev;
 
@@ -13,18 +7,12 @@ DROP TABLE IF EXISTS users;
 
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
-  email TEXT NOT NULL UNIQUE,
-  password TEXT NOT NULL
-);
-
-CREATE TABLE register (
-  id SERIAL PRIMARY KEY,
   first_name VARCHAR(255) NOT NULL,
   last_name VARCHAR(255) NOT NULL,
   birth_date DATE NOT NULL,
   email TEXT NOT NULL UNIQUE,
   password TEXT NOT NULL
-)
+);
 
 DROP TABLE IF EXISTS charities;
 
@@ -34,9 +22,7 @@ CREATE TABLE charities (
   stripe_account_id VARCHAR(255) NOT NULL
 );
 
-
 DROP TABLE IF EXISTS transactions;
-
 CREATE TABLE transactions (
   id SERIAL PRIMARY KEY,
   charity_id INTEGER REFERENCES charities(id),

@@ -15,7 +15,7 @@ app.use(cors());
 
 
 app.get('/', (req, res) => {
-  res.send('Hello World!');
+  res.send('Welcome to change4change!');
 });
 
 app.get('/transactions', bodyParser.json(), async (req, res) => {
