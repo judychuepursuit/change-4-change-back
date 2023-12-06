@@ -199,6 +199,9 @@ app.post(
           // Insert into your database (example query, adjust accordingly)
           const insertText =
             "INSERT INTO transactions(charity_id, amount, currency, donation_frequency, stripe_payment_intent_id) VALUES($1, $2, $3, $4, $5)";
+          console.log(paymentIntent.id);
+          console.log(" sripe id found");
+
           const insertValues = [
             paymentIntent.metadata.charity_id,
             paymentIntent.amount / 100, // Convert from cents
