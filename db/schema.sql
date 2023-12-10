@@ -4,7 +4,6 @@ CREATE DATABASE charities_dev;
 \c charities_dev;
 
 DROP TABLE IF EXISTS users;
-
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   first_name VARCHAR(255) NOT NULL,
@@ -15,7 +14,6 @@ CREATE TABLE users (
 );
 
 DROP TABLE IF EXISTS charities;
-
 CREATE TABLE charities (
   id SERIAL PRIMARY KEY,
   name VARCHAR(255) UNIQUE NOT NULL,
