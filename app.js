@@ -1,27 +1,36 @@
-// // DEPENDENCIES
-// const cors = require("cors");
-// const express = require("express");
+const cors = require("cors");
+const express = require("express");
+const pool = require("./db/dbConfig");
 
-// // CONFIGURATION
-// const app = express();
+const app = express();
 
-// // MIDDLEWARE
-// app.use(cors());
-// app.use(express.json());
+app.use(cors());
+app.use(express.json());
 
-// // ROUTES
-// app.get("/", (req, res) => {
-//   res.send("Welcome to the City App");
-// });
+const loginController = require("./controllers/loginController");
+const registerController = require("./controllers/registerController");
 
-// // Cities ROUTES
-// const cityController = require("./controllers/cityController.js");
-// app.use("/cities", cityController);
+app.get("/", (req, res) => {
+  res.send("Welcome to change4change");
+});
 
-// // 404 PAGE
-// app.get("*", (req, res) => {
-//   res.status(404).send("Page not found");
-// });
+app.get("/users", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM users");
+    const users = result.rows;
 
-// // EXPORT
-// module.exports = app;
+    res.json(users);
+  } catch (error) {
+    console.error("Error in /users route:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.post("/login", loginController.login);
+app.post("/register", registerController.register);
+
+app.get("*", (req, res) => {
+  res.status(404).send("Page not found");
+});
+
+module.exports = app;

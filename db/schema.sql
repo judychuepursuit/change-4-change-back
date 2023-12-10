@@ -3,6 +3,18 @@ CREATE DATABASE charities_dev;
 
 \c charities_dev;
 
+DROP TABLE IF EXISTS users;
+
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  first_name VARCHAR(255) NOT NULL,
+  last_name VARCHAR(255) NOT NULL,
+  birth_date DATE NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  password TEXT NOT NULL
+);
+
+
 DROP TABLE IF EXISTS charities;
 
 CREATE TABLE charities (
