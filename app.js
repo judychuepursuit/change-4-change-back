@@ -8,7 +8,7 @@ const { body, validationResult } = require("express-validator"); // Import the n
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+// app.use(express.json());
 
 const loginController = require("./controllers/loginController");
 const registerController = require("./controllers/registerController");
