@@ -174,7 +174,6 @@ app.post(
   async (request, response) => {
     const sig = request.headers["stripe-signature"];
     // let event;
-
     try {
       const event = stripe.webhooks.constructEvent(
         request.body,
@@ -185,7 +184,6 @@ app.post(
       //   console.error(`Webhook Error: ${err.message}`);
       //   return response.status(400).send(`Webhook Error: ${err.message}`);
       // }
-
       // Handle the event
       switch (event.type) {
         // case 'charge.succeeded':
@@ -201,7 +199,6 @@ app.post(
             "INSERT INTO transactions(charity_id, amount, currency, donation_frequency, stripe_payment_intent_id) VALUES($1, $2, $3, $4, $5)";
           console.log(paymentIntent.id);
           console.log(" sripe id found");
-
           const insertValues = [
             paymentIntent.metadata.charity_id,
             paymentIntent.amount / 100, // Convert from cents
