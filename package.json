@@ -7,12 +7,14 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon server.js",
     "pg:init": "psql -U postgres -f db/schema.sql",
-    "pg:seed": "psql -U postgres -f db/seed.sql"
+    "pg:seed": "psql -U postgres -f db/seed.sql",
+    "dev": "nodemon server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "bcrypt": "^5.1.1",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
