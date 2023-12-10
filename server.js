@@ -1,3 +1,6 @@
+// DEPENDENCIES
+const app = require("./app.js");
+
 require("dotenv").config();
 const express = require("express");
 const bodyParser = require("body-parser");
@@ -6,12 +9,10 @@ const cors = require("cors");
 const pool = require("./db/dbConfig");
 const { body, validationResult } = require("express-validator"); // Import the necessary functions
 
-const app = express();
-
 app.use(cors());
 
 app.get("/", (req, res) => {
-  res.send("Hello World!");
+  res.send("Welcome to change4change!");
 });
 
 app.get("/transactions", bodyParser.json(), async (req, res) => {

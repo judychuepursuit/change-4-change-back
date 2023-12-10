@@ -14,7 +14,6 @@ CREATE TABLE users (
   password TEXT NOT NULL
 );
 
-
 DROP TABLE IF EXISTS charities;
 
 CREATE TABLE charities (
@@ -23,9 +22,7 @@ CREATE TABLE charities (
   stripe_account_id VARCHAR(255) NOT NULL
 );
 
-
 DROP TABLE IF EXISTS transactions;
-
 CREATE TABLE transactions (
   id SERIAL PRIMARY KEY,
   charity_id INTEGER REFERENCES charities(id),
@@ -35,5 +32,4 @@ CREATE TABLE transactions (
   stripe_payment_intent_id VARCHAR(255) NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
 
