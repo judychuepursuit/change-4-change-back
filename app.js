@@ -163,7 +163,13 @@ app.post(
           default_payment_method: paymentMethodId,
           transfer_data: { destination: charityStripeAccountId }, // Direct payment to the charity's Stripe account
           expand: ["latest_invoice.payment_intent"], // Include the PaymentIntent in the response
+          metadata: {
+            charity_id: charityId,
+            donation_frequency: donationFrequency,
+          },
         });
+        console.log("added subscription");
+
         res.json({
           clientSecret:
             subscription.latest_invoice.payment_intent.client_secret,
