@@ -10,6 +10,15 @@ const app = express();
 app.use(cors());
 // app.use(express.json());
 
+// Custom middleware to exclude express.json() for the Stripe webhook route
+app.use((req, res, next) => {
+  if (req.originalUrl === "/stripe-webhook") {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
+
 const loginController = require("./controllers/loginController");
 const registerController = require("./controllers/registerController");
 // const loginController = require('./controllers/loginController');
