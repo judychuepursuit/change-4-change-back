@@ -3,13 +3,17 @@ const express = require("express");
 const pool = require("./db/dbConfig");
 const bodyParser = require("body-parser");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const sgMail = require("@sendgrid/mail"); // Add this line
+
 const { body, validationResult } = require("express-validator"); // Import the necessary functions
+
+sgMail.setApiKey(process.env.SENDGRID_API_KEY); // Add this line
 
 const app = express();
 
 app.use(cors());
-// app.use(express.json());
 
+// app.use(express.json());
 // Custom middleware to exclude express.json() for the Stripe webhook route
 app.use((req, res, next) => {
   if (req.originalUrl === "/stripe-webhook") {
@@ -21,8 +25,6 @@ app.use((req, res, next) => {
 
 const loginController = require("./controllers/loginController");
 const registerController = require("./controllers/registerController");
-// const loginController = require('./controllers/loginController');
-// const registerController = require('./controllers/registerController');
 
 app.get("/", (req, res) => {
   res.send("Welcome to change4change");
@@ -76,6 +78,62 @@ const getCharityStripeAccountId = async (charityName) => {
   }
 };
 
+// Place this function somewhere accessible in your `app.js` file
+const sendDonationConfirmationEmail = async (
+  userEmail,
+  charityName,
+  amount,
+  firstName,
+  lastName
+) => {
+  const donorName = `${firstName} ${lastName}`;
+
+  const message = {
+    to: userEmail,
+    from: "change4change.pursuit@gmail.com",
+    subject: "Donation Confirmation",
+    // text: `Dear ${donorName},\n\nThank you for your donation of $${amount} to ${charityName}.`,
+    text: `Dear ${donorName}, Thank you for your donation of $${amount} to ${charityName}.`,
+
+    html: `
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; }
+          .header { background-color: #f4f4f4; padding: 10px; text-align: center; }
+          .content { margin: 20px; }
+          .footer { background-color: #f4f4f4; padding: 10px; text-align: center; }
+          .button { display: block; width: 200px; margin: 20px auto; padding: 10px; background: #007bff; text-align: center; border-radius: 5px; color: white; text-decoration: none; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Change4Change</h1>
+        </div>
+        <div class="content">
+          <p>Dear ${donorName},</p>
+          <p>Thank you for your generous donation of $${amount} to ${charityName}.</p>
+          <p>Your support is making a difference in the lives of many.</p>
+          <!-- You can add more content here -->
+        </div>
+        <div class="footer">
+          <p>If you have any questions, please don't hesitate to contact us.</p>
+          <a href="http://yourwebsite.com/contact" class="button">Contact Us</a>
+        </div>
+      </body>
+    </html>
+  `,
+  };
+
+  try {
+    await sgMail.send(message);
+    console.log("Confirmation email sent");
+  } catch (error) {
+    console.error("Error sending confirmation email:", error);
+    throw error; // Or handle the error as needed
+  }
+};
+
 app.post(
   "/create-payment-intent",
   bodyParser.json(),
@@ -104,6 +162,8 @@ app.post(
       paymentMethodId,
       email,
       donationFrequency,
+      firstName,
+      lastName,
     } = req.body;
     console.log(
       amount,
@@ -159,11 +219,36 @@ app.post(
             donation_frequency: donationFrequency,
           },
         });
-        // Send back the client secret and the status of the payment intent
-        res.json({
-          clientSecret: paymentIntent.client_secret,
-          status: paymentIntent.status,
-        });
+
+        if (paymentIntent.status === "succeeded") {
+          // The payment was successful, send a confirmation email
+          try {
+            await sendDonationConfirmationEmail(
+              email, // The email address of the user from the request body
+              charityName, // The name of the charity they donated to, from the request body
+              amount, // The amount they donated, from the request body
+              firstName,
+              lastName
+            );
+            // Send a success response back to the client
+            res.json({
+              message: "Donation successful and email sent!",
+              clientSecret: paymentIntent.client_secret,
+              status: paymentIntent.status,
+            });
+          } catch (error) {
+            console.error("Payment succeeded but email failed:", error);
+            // Payment was successful, but email sending failed
+            res.status(500).json({
+              message: "Payment succeeded but email notification failed",
+            });
+          }
+        } else {
+          // Handle other statuses accordingly
+          res
+            .status(400)
+            .json({ message: "Payment failed", status: paymentIntent.status });
+        }
       } else {
         // For recurring subscriptions
         const subscription = await stripe.subscriptions.create({
