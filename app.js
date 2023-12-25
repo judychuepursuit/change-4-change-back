@@ -4,12 +4,9 @@ const pool = require("./db/dbConfig");
 const bodyParser = require("body-parser");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const { body, validationResult } = require("express-validator"); // Import the necessary functions
-
 const app = express();
-
 app.use(cors());
 // app.use(express.json());
-
 // Custom middleware to exclude express.json() for the Stripe webhook route
 app.use((req, res, next) => {
   if (req.originalUrl === "/stripe-webhook") {
@@ -21,8 +18,6 @@ app.use((req, res, next) => {
 
 const loginController = require("./controllers/loginController");
 const registerController = require("./controllers/registerController");
-// const loginController = require('./controllers/loginController');
-// const registerController = require('./controllers/registerController');
 
 app.get("/", (req, res) => {
   res.send("Welcome to change4change");
