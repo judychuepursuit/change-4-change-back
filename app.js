@@ -3,18 +3,19 @@ const express = require("express");
 const pool = require("./db/dbConfig");
 const bodyParser = require("body-parser");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-const sgMail = require("@sendgrid/mail"); // Add this line
-
-const { body, validationResult } = require("express-validator"); // Import the necessary functions
-
-sgMail.setApiKey(process.env.SENDGRID_API_KEY); // Add this line
-
+const sgMail = require("@sendgrid/mail");
+const PDFDocument = require("pdfkit");
+const fs = require("fs");
+// const { promisify } = require("util");
+// const writeFileAsync = promisify(fs.writeFile);
+const { body, validationResult } = require("express-validator");
+const loginController = require("./controllers/loginController");
+const registerController = require("./controllers/registerController");
 const app = express();
 
-app.use(cors());
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-// app.use(express.json());
-// Custom middleware to exclude express.json() for the Stripe webhook route
+app.use(cors());
 app.use((req, res, next) => {
   if (req.originalUrl === "/stripe-webhook") {
     next();
@@ -22,9 +23,6 @@ app.use((req, res, next) => {
     express.json()(req, res, next);
   }
 });
-
-const loginController = require("./controllers/loginController");
-const registerController = require("./controllers/registerController");
 
 app.get("/", (req, res) => {
   res.send("Welcome to change4change");
@@ -34,16 +32,12 @@ app.get("/users", async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM users");
     const users = result.rows;
-
     res.json(users);
   } catch (error) {
     console.error("Error in /users route:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
-
-app.post("/login", loginController.login);
-app.post("/register", registerController.register);
 
 app.get("/transactions", bodyParser.json(), async (req, res) => {
   try {
@@ -61,16 +55,15 @@ app.get("/transactions", bodyParser.json(), async (req, res) => {
 });
 
 // Function to retrieve a charity's Stripe account ID
-const getCharityStripeAccountId = async (charityName) => {
-  console.log(charityName);
+const getCharityStripeAccountId = async (charityId) => {
   try {
-    const queryText = "SELECT stripe_account_id FROM charities WHERE name = $1";
-    const queryValues = [charityName];
+    const queryText = "SELECT stripe_account_id FROM charities WHERE id = $1";
+    const queryValues = [charityId];
     const res = await pool.query(queryText, queryValues);
     if (res.rows.length > 0) {
       return res.rows[0].stripe_account_id;
     } else {
-      throw new Error("Charity not found");
+      throw new Error("Charity not found with ID: " + charityId);
     }
   } catch (err) {
     console.error("Error querying the database:", err);
@@ -78,61 +71,145 @@ const getCharityStripeAccountId = async (charityName) => {
   }
 };
 
-// Place this function somewhere accessible in your `app.js` file
-const sendDonationConfirmationEmail = async (
-  userEmail,
-  charityName,
-  amount,
-  firstName,
-  lastName
-) => {
-  const donorName = `${firstName} ${lastName}`;
-
-  const message = {
-    to: userEmail,
-    from: "change4change.pursuit@gmail.com",
-    subject: "Donation Confirmation",
-    // text: `Dear ${donorName},\n\nThank you for your donation of $${amount} to ${charityName}.`,
-    text: `Dear ${donorName}, Thank you for your donation of $${amount} to ${charityName}.`,
-
-    html: `
-    <html>
-      <head>
-        <style>
-          body { font-family: Arial, sans-serif; }
-          .header { background-color: #f4f4f4; padding: 10px; text-align: center; }
-          .content { margin: 20px; }
-          .footer { background-color: #f4f4f4; padding: 10px; text-align: center; }
-          .button { display: block; width: 200px; margin: 20px auto; padding: 10px; background: #007bff; text-align: center; border-radius: 5px; color: white; text-decoration: none; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>Change4Change</h1>
-        </div>
-        <div class="content">
-          <p>Dear ${donorName},</p>
-          <p>Thank you for your generous donation of $${amount} to ${charityName}.</p>
-          <p>Your support is making a difference in the lives of many.</p>
-          <!-- You can add more content here -->
-        </div>
-        <div class="footer">
-          <p>If you have any questions, please don't hesitate to contact us.</p>
-          <a href="http://yourwebsite.com/contact" class="button">Contact Us</a>
-        </div>
-      </body>
-    </html>
-  `,
-  };
-
+// Function to retrieve a charity's name by ID
+const getCharityNameById = async (charityId) => {
   try {
-    await sgMail.send(message);
-    console.log("Confirmation email sent");
-  } catch (error) {
-    console.error("Error sending confirmation email:", error);
-    throw error; // Or handle the error as needed
+    const result = await pool.query(
+      "SELECT name FROM charities WHERE id = $1",
+      [charityId]
+    );
+    if (result.rows.length > 0) {
+      return result.rows[0].name;
+    } else {
+      throw new Error("Charity name not found for ID: " + charityId);
+    }
+  } catch (err) {
+    console.error("Error fetching charity name:", err);
+    throw err;
   }
 };
+
+const sendDonationConfirmationEmail = async (
+  userEmail,
+  charityId,
+  amount,
+  firstName,
+  lastName,
+  donationFrequency
+) => {
+  try {
+    const donorName = `${firstName} ${lastName}`;
+    const charityName = await getCharityNameById(charityId);
+    if (!charityName) {
+      throw new Error(`Charity with ID ${charityId} not found.`);
+    }
+    const frequencyMessage =
+      donationFrequency === "monthly" ? "monthly" : "one-time";
+
+    // Generate PDF
+    const doc = new PDFDocument();
+    const pdfPath = `receipt_${Date.now()}.pdf`;
+    const stream = fs.createWriteStream(pdfPath);
+    doc.pipe(stream);
+
+    // PDF content
+    doc.fontSize(22).text("Donation Receipt", { align: "center" });
+    doc.moveDown();
+
+    doc.fontSize(16).text(`Donor Name: ${donorName}`, { align: "left" });
+    doc.text(`Charity Name: ${charityName}`, { align: "left" });
+    doc.text(`Donation Amount: $${amount}`, { align: "left" });
+    doc.text(`Donation Date: ${new Date().toLocaleDateString()}`, {
+      align: "left",
+    });
+    doc.text(`Donation Frequency: ${frequencyMessage}`, { align: "left" });
+    // If you have an actual donation number or other details, add them here.
+    // doc.text(`Receipt for your ${donationFrequency} donation`, {
+    //   align: "center",
+    // });
+    // // ... add more content to your PDF ...
+
+    // Finalize PDF file
+    doc.end();
+    await new Promise((resolve) => stream.on("finish", resolve));
+
+    // Read the PDF into a buffer
+    const pdfBuffer = fs.readFileSync(pdfPath);
+    const message = {
+      to: userEmail,
+      from: "change4change.pursuit@gmail.com",
+      subject: "Donation Confirmation and Receipt",
+      text: `Dear ${donorName}, Thank you for your ${frequencyMessage} donation of $${amount} to ${charityName}.`,
+      attachments: [
+        {
+          content: pdfBuffer.toString("base64"),
+          filename: "DonationReceipt.pdf",
+          type: "application/pdf",
+          disposition: "attachment",
+        },
+      ],
+      html: `
+          <html>
+            <head>
+              <style>
+              body { font-family: Arial, sans-serif; background-color: #f4f4f4; }
+              .header { background-color: #ff7300; padding: 10px; text-align: center; color: white; }
+              .content { margin: 20px; background-color: white; padding: 20px; }
+              .footer { background-color: #f4f4f4; padding: 10px; text-align: center; }
+              .donation-info { background-color: #e6e6e6; padding: 10px; }
+              .button {
+                display: block; /* Block display will allow the button to respect the margin auto */
+                width: calc(25% - 20px); /* Full width minus the padding from the container */
+                background-color: #551aeb;
+                color: white !important;
+                border: none;
+                border-radius: 3px;
+                padding: 10px 15px;
+                cursor: pointer;
+                margin: 10px auto; /* Top and bottom margin of 10px and auto margin on the sides */
+                transition: background-color 0.3s ease;
+                text-decoration: none !important;
+                text-align: center; /* Centers the text inside the button */
+              }
+              </style>
+            </head>
+            <body>
+              <div class="header">
+                <h1>change 4 change</h1>
+              </div>
+              <div class="content">
+                <p><strong>${donorName} thank you for your donation!</strong></p>
+                <div class="donation-info">
+                  <p>Your support is making a difference in the lives of many.</p>
+                  <p>You have donated <strong>$${amount}</strong> with fees included to <strong>${charityName}</strong></p>
+                  <p>Charged Amount: $${amount}</p>
+                  <p>Donation Date: ${new Date().toLocaleDateString()}</p>
+                  <p>Donation Number: ${Math.floor(
+                    Math.random() * 100000000
+                  )}</p>
+                </div>
+                <p>Your official receipt is attached to this email</p>
+              </div>
+              <div class="footer">
+                <p>If you have any questions, please don't hesitate to contact us.</p>
+                <a href="https://change-4-change-frontend.onrender.com/connect-us" style="color: white; text-decoration: none;" class="button">Contact Us</a>
+                </div>
+            </body>
+          </html>
+        `,
+    };
+    await sgMail.send(message);
+    console.log("Confirmation email with PDF receipt sent");
+    // Optionally delete the temporary PDF file
+    fs.unlinkSync(pdfPath);
+  } catch (error) {
+    console.error("Error in sendDonationConfirmationEmail:", error);
+    // Handle or log the error as appropriate
+  }
+};
+
+app.post("/login", loginController.login);
+app.post("/register", registerController.register);
 
 app.post(
   "/create-payment-intent",
@@ -150,6 +227,7 @@ app.post(
     // Add additional validation as needed
   ],
   async (req, res) => {
+    // console.log("Received Charity ID:", charityId); // Log the received charity ID
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -158,7 +236,7 @@ app.post(
     const {
       amount,
       currency,
-      charityName,
+      charityId,
       paymentMethodId,
       email,
       donationFrequency,
@@ -168,7 +246,7 @@ app.post(
     console.log(
       amount,
       currency,
-      charityName,
+      charityId,
       paymentMethodId,
       email,
       donationFrequency
@@ -176,23 +254,8 @@ app.post(
     try {
       // Create a Customer first if not exists
       const customer = await stripe.customers.create({ email });
-
-      const sanitizedCharityName = charityName.trim();
-      const charityStripeAccountId = await getCharityStripeAccountId(
-        sanitizedCharityName
-      );
-      const charityIdRes = await pool.query(
-        "SELECT id FROM charities WHERE name = $1",
-        [charityName]
-      );
-      const charityId = charityIdRes.rows[0].id;
-
+      const charityStripeAccountId = await getCharityStripeAccountId(charityId);
       console.log("Charity ID:", charityId); // Log to check the charity ID
-
-      // Validate and sanitize the charityName before querying the database
-      if (typeof charityName !== "string" || charityName.trim().length === 0) {
-        return res.status(400).json({ error: "Invalid charity name" });
-      }
       // Attach the Payment Method to the Customer
       await stripe.paymentMethods.attach(paymentMethodId, {
         customer: customer.id,
@@ -201,8 +264,6 @@ app.post(
       await stripe.customers.update(customer.id, {
         invoice_settings: { default_payment_method: paymentMethodId },
       });
-
-      // let clientSecret;
       if (donationFrequency === "one-time") {
         // For one-time payments
         const paymentIntent = await stripe.paymentIntents.create({
@@ -219,16 +280,16 @@ app.post(
             donation_frequency: donationFrequency,
           },
         });
-
         if (paymentIntent.status === "succeeded") {
           // The payment was successful, send a confirmation email
           try {
             await sendDonationConfirmationEmail(
               email, // The email address of the user from the request body
-              charityName, // The name of the charity they donated to, from the request body
+              charityId, // The name of the charity they donated to, from the request body
               amount, // The amount they donated, from the request body
               firstName,
-              lastName
+              lastName,
+              donationFrequency // Pass this variable
             );
             // Send a success response back to the client
             res.json({
@@ -249,28 +310,95 @@ app.post(
             .status(400)
             .json({ message: "Payment failed", status: paymentIntent.status });
         }
-      } else {
-        // For recurring subscriptions
+      } else if (donationFrequency === "monthly") {
+        // Ensure you have a price ID set up for monthly donations in Stripe
+        const priceId = process.env.STRIPE_PRICE_ID; // Retrieve the Stripe price ID for monthly subscriptions from environment variables
+        if (!priceId) {
+          res.status(400).json({
+            error: "Stripe price ID for monthly donations is not set.",
+          });
+          return;
+        }
         const subscription = await stripe.subscriptions.create({
           customer: customer.id,
-          items: [{ price: process.env.STRIPE_PRICE_ID }],
+          items: [{ price: priceId }],
           default_payment_method: paymentMethodId,
           transfer_data: { destination: charityStripeAccountId }, // Direct payment to the charity's Stripe account
           expand: ["latest_invoice.payment_intent"], // Include the PaymentIntent in the response
           metadata: {
             charity_id: charityId,
-            donation_frequency: donationFrequency,
+            donation_frequency: donationFrequency, // Set from the request to "monthly"
           },
         });
-        console.log("added subscription");
-
+        // Check if the subscription is created successfully
+        if (
+          subscription.status === "active" ||
+          subscription.status === "succeeded"
+        ) {
+          // Insert subscription details into the database
+          const insertText = `
+          INSERT INTO transactions (
+            charity_id, 
+            amount, 
+            currency, 
+            donation_frequency, 
+            stripe_transaction_id, 
+            created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6)
+        `;
+          const insertValues = [
+            charityId,
+            // Use the amount from the corresponding price object, or a pre-defined amount
+            // Ensure this matches your data type and scale in the database
+            amount,
+            currency,
+            donationFrequency,
+            subscription.id, // Use the subscription ID here for reference
+            new Date().toISOString(), // Use the current time for the subscription start
+          ];
+          try {
+            await pool.query(insertText, insertValues);
+            console.log("Subscription recorded in the database.");
+            const monthlyAmount = insertValues[1]; // amount from the insertValues
+            await sendDonationConfirmationEmail(
+              email,
+              charityId,
+              monthlyAmount,
+              firstName,
+              lastName,
+              donationFrequency // Pass this variable
+            );
+            console.log("Monthly donation confirmation email sent.");
+            res.json({
+              message:
+                "Monthly donation set up successfully. Confirmation email sent!",
+              clientSecret:
+                subscription.latest_invoice.payment_intent.client_secret,
+              status: subscription.latest_invoice.payment_intent.status,
+            });
+          } catch (err) {
+            console.error(
+              "Error inserting subscription transaction into database:",
+              err
+            );
+            res.status(500).json({ error: "An internal error occurred." });
+          }
+        } else {
+          // Handle cases where subscription creation was not successful
+          console.error(
+            "Subscription creation failed with status:",
+            subscription.status
+          );
+          res.status(400).json({ error: "Failed to create subscription" });
+          return;
+        }
+        console.log("Added subscription");
         res.json({
           clientSecret:
             subscription.latest_invoice.payment_intent.client_secret,
           status: subscription.latest_invoice.payment_intent.status,
         });
       }
-
       // console.log(clientSecret);
     } catch (err) {
       console.error(
@@ -292,67 +420,106 @@ app.post(
   "/stripe-webhook",
   express.raw({ type: "application/json" }),
   async (request, response) => {
-    const sig = request.headers["stripe-signature"];
-    // let event;
     try {
       const event = stripe.webhooks.constructEvent(
         request.body,
-        sig,
+        request.headers["stripe-signature"],
         process.env.STRIPE_ENDPOINT_SECRET
       );
-      // } catch (err) {
-      //   console.error(`Webhook Error: ${err.message}`);
-      //   return response.status(400).send(`Webhook Error: ${err.message}`);
-      // }
-      // Handle the event
       switch (event.type) {
-        // case 'charge.succeeded':
         case "payment_intent.succeeded": {
-          console.log(event.type);
-          // Business logic for payment intent succeeded
           const paymentIntent = event.data.object;
-          // Extracting donation frequency from metadata or determining it some other way
-          const donationFrequency =
-            paymentIntent.metadata.donation_frequency || "one-time";
-          // Insert into your database (example query, adjust accordingly)
-          const insertText =
-            "INSERT INTO transactions(charity_id, amount, currency, donation_frequency, stripe_payment_intent_id) VALUES($1, $2, $3, $4, $5)";
-          console.log(paymentIntent.id);
-          console.log(" sripe id found");
+          // Extract donation frequency from the metadata. If not present, log an error or handle as appropriate.
+          const donationFrequency = paymentIntent.metadata.donation_frequency;
+          if (!donationFrequency) {
+            console.error(
+              "Donation frequency not set in payment intent metadata."
+            );
+            // You should handle this case appropriately, perhaps by setting a default value or rejecting the transaction.
+          }
+          // Extract charity_id from the metadata. If not present, log an error or handle as appropriate.
+          const charityId = paymentIntent.metadata.charity_id;
+          if (!charityId) {
+            console.error("Charity ID not set in payment intent metadata.");
+            // You should handle this case appropriately, perhaps by setting a default value or rejecting the transaction.
+          }
+          // Prepare the SQL query.
+          const insertText = `
+              INSERT INTO transactions (
+                charity_id, 
+                amount, 
+                currency, 
+                donation_frequency, 
+                stripe_transaction_id, 
+                created_at
+              ) VALUES ($1, $2, $3, $4, $5, $6)
+            `;
+          // Prepare the values for SQL query.
           const insertValues = [
-            paymentIntent.metadata.charity_id,
-            paymentIntent.amount / 100, // Convert from cents
+            charityId, // Retrieved from paymentIntent metadata.
+            paymentIntent.amount / 100, // Convert amount from cents to dollars.
             paymentIntent.currency,
-            donationFrequency, // Use the extracted or default value
-            paymentIntent.id,
+            donationFrequency, // Retrieved from paymentIntent metadata.
+            paymentIntent.id, // Stripe transaction ID.
+            new Date(paymentIntent.created * 1000).toISOString(), // Convert Stripe's created timestamp (in seconds) to ISO string.
           ];
+          // Execute the SQL query.
           try {
             await pool.query(insertText, insertValues);
-            console.log("inserttext insertvalues");
-          } catch (insertErr) {
-            console.error("Error saving to database:", insertErr);
-            // Decide how you want to handle errors
+            console.log("Transaction recorded for one-time payment.");
+          } catch (error) {
+            console.error("Error inserting transaction into database:", error);
+            // Handle the database error as appropriate.
           }
           break;
         }
-        case "invoice.payment_succeeded":
-          // Business logic for invoice payment succeeded
+        case "invoice.payment_succeeded": {
+          const invoice = event.data.object;
+          try {
+            const customer = await stripe.customers.retrieve(invoice.customer);
+            const charityId = customer.metadata.charity_id;
+            if (!charityId) {
+              console.error("Charity ID not found in customer metadata.");
+              // Handle this case as needed.
+            }
+            const stripeTransactionId = invoice.payment_intent || invoice.id; // Fallback to invoice ID if payment_intent is null.
+            const insertText = `
+                INSERT INTO transactions (
+                  charity_id, 
+                  amount, 
+                  currency, 
+                  donation_frequency, 
+                  stripe_transaction_id, 
+                  created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+              `;
+            const insertValues = [
+              charityId,
+              invoice.amount_paid / 100, // Convert from cents
+              invoice.currency,
+              "monthly",
+              stripeTransactionId,
+              new Date(invoice.created * 1000).toISOString(), // Convert from UNIX timestamp to ISO string
+            ];
+            await pool.query(insertText, insertValues);
+          } catch (error) {
+            console.error("Error handling invoice.payment_succeeded:", error);
+            // Handle the error appropriately.
+          }
           break;
+        }
         case "payment_intent.payment_failed":
           // Business logic for payment intent payment failed
           break;
-        case "payment_method.attached":
-          // Business logic for payment method attached
-          break;
         default:
-          // Handle other event types
           console.log(`Unhandled event type ${event.type}`);
       }
-      // Return a response to acknowledge receipt of the event
-      response.json({ received: true });
+      response.json({ received: true }); // Acknowledge receipt of the event
     } catch (err) {
-      console.error(`Webhook Error: ${err.message}`);
-      response.status(400).send(`Webhook Error: ${err.message}`);
+      console.error(`Webhook Error: ${err.message}`, err.stack);
+      if (!response.headersSent) {
+        response.status(400).send(`Webhook Error: ${err.message}`);
+      }
     }
   }
 );
