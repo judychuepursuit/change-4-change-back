@@ -1,58 +1,18 @@
 const cors = require("cors");
 const express = require("express");
+const path = require("path");
 const pool = require("./db/dbConfig");
 const bodyParser = require("body-parser");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const sgMail = require("@sendgrid/mail");
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
-// const { promisify } = require("util");
-// const writeFileAsync = promisify(fs.writeFile);
 const { body, validationResult } = require("express-validator");
 const loginController = require("./controllers/loginController");
 const registerController = require("./controllers/registerController");
 const app = express();
 
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
-app.use(cors());
-app.use((req, res, next) => {
-  if (req.originalUrl === "/stripe-webhook") {
-    next();
-  } else {
-    express.json()(req, res, next);
-  }
-});
-
-app.get("/", (req, res) => {
-  res.send("Welcome to change4change");
-});
-
-app.get("/users", async (req, res) => {
-  try {
-    const result = await pool.query("SELECT * FROM users");
-    const users = result.rows;
-    res.json(users);
-  } catch (error) {
-    console.error("Error in /users route:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-app.get("/transactions", bodyParser.json(), async (req, res) => {
-  try {
-    console.log("fetching transaction");
-    const result = await pool.query(
-      `SELECT t.amount, t.currency, t.donation_frequency, c.name, t.created_at
-      FROM transactions t 
-      JOIN charities c ON t.charity_id = c.id`
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error("Error retrieving transactions", err);
-    res.status(500).json({ message: "Error retrieving transactions" });
-  }
-});
 
 // Function to retrieve a charity's Stripe account ID
 const getCharityStripeAccountId = async (charityId) => {
@@ -108,26 +68,156 @@ const sendDonationConfirmationEmail = async (
 
     // Generate PDF
     const doc = new PDFDocument();
+    const donationAmount = parseFloat(amount);
+    const formattedAmount = isNaN(donationAmount)
+      ? "0.00"
+      : donationAmount.toFixed(2);
+
     const pdfPath = `receipt_${Date.now()}.pdf`;
     const stream = fs.createWriteStream(pdfPath);
     doc.pipe(stream);
 
-    // PDF content
-    doc.fontSize(22).text("Donation Receipt", { align: "center" });
-    doc.moveDown();
+    // Add your organization's logo and center it on the page
+    const pageWidth = doc.page.width; // This will give you the width of the page
+    const imageWidth = 150; // The width you want your image to be
+    const imageX = pageWidth / 2 - imageWidth / 2; // This will center the image
+    doc
+      .image("images/logoo.png", imageX, doc.y, { width: imageWidth })
+      .moveDown(0.5);
 
-    doc.fontSize(16).text(`Donor Name: ${donorName}`, { align: "left" });
-    doc.text(`Charity Name: ${charityName}`, { align: "left" });
-    doc.text(`Donation Amount: $${amount}`, { align: "left" });
-    doc.text(`Donation Date: ${new Date().toLocaleDateString()}`, {
-      align: "left",
-    });
-    doc.text(`Donation Frequency: ${frequencyMessage}`, { align: "left" });
-    // If you have an actual donation number or other details, add them here.
-    // doc.text(`Receipt for your ${donationFrequency} donation`, {
-    //   align: "center",
+    // Donation Receipt Title
+    doc
+      .fontSize(22)
+      .font("Helvetica-Bold")
+      .text("Donation Receipt", { align: "center" })
+      .moveDown(1);
+
+    // Organization Details
+    doc
+      .fontSize(10)
+      .font("Helvetica")
+      .text(`Receipt Number: ${Math.floor(Math.random() * 10000000)}`, {
+        align: "left",
+      })
+      .text(`Organization Name: change 4 change`, { align: "left" })
+      .text(`Organization Address: 123 Charity Lane, Suite 100`, {
+        align: "left",
+      })
+      .text(`Federal Tax ID: 12-3456789`, { align: "left" })
+      .moveDown(1);
+
+    // Donor Details in a table-like format for clarity
+    doc
+      .fontSize(12)
+      .font("Helvetica")
+      .text(`Donor Name: ${donorName}`, { align: "left" })
+      .text(`Charity Name: ${charityName}`, { align: "left" })
+      .text(`Donation Amount: $${formattedAmount}`, { align: "left" })
+      .text(`Donation Date: ${new Date().toLocaleDateString()}`, {
+        align: "left",
+      })
+      .text(`Donation Frequency: ${donationFrequency}`, { align: "left" })
+      .moveDown(1);
+
+    // Thank You Note
+    doc
+      .fontSize(10)
+      .font("Helvetica-Oblique")
+      .fillColor("grey")
+      .text(
+        "Thank you for your generous support. Your donation is greatly appreciated and will be used to help continue our mission.",
+        { align: "center" }
+      )
+      .moveDown(1);
+
+    // Legal Text
+    doc
+      .fontSize(10)
+      .font("Helvetica")
+      .fillColor("black")
+      .text(
+        "This receipt is for charitable contributions and no goods or services were provided in exchange for the donation.",
+        { align: "left" }
+      )
+      .moveDown(1);
+
+    // Signature
+    doc
+      .image(
+        "images/DALL·E 2023-12-31 07.37.45 - A handwritten signature with the name 'Alex Smith'. The signature should look professional and suitable for official documents. It should not resemble.png",
+        50,
+        doc.y,
+        { width: 50 }
+      )
+      .text("Authorized Signature", 50, doc.y + 20)
+      .moveDown(1);
+
+    // Contact Information
+    doc
+      .fontSize(10)
+      .font("Helvetica")
+      .text(
+        "If you have any questions, please contact us at: change4change.pursuit@gmail.com or (123) 456-7890.",
+        { align: "center" }
+      )
+      .moveDown(0.5);
+
+    // // Define the width for each icon and the space between the icons
+    // const iconWidth = 15;
+    // const spaceBetweenIcons = 10;
+
+    // // Calculate the total width that all icons will occupy including the space between them
+    // const totalIconsWidth = 3 * iconWidth + 2 * spaceBetweenIcons;
+
+    // // Calculate the center point of the PDF page
+    // const centerPoint = doc.page.width / 2;
+
+    // // Calculate the starting X position for the first icon so that the icons as a group are centered
+    // const firstIconX = centerPoint - totalIconsWidth / 2;
+
+    // // Place the first social media icon
+    // doc.image("images/fb-logo.jpeg", firstIconX, doc.y, { width: iconWidth });
+
+    // // Calculate X position for the second icon and place it
+    // const secondIconX = firstIconX + iconWidth + spaceBetweenIcons;
+    // doc.image("images/twitter-logo.png", secondIconX, doc.y, {
+    //   width: iconWidth,
     // });
-    // // ... add more content to your PDF ...
+
+    // // Calculate X position for the third icon and place it
+    // const thirdIconX = secondIconX + iconWidth + spaceBetweenIcons;
+    // doc.image("images/ig-logo.jpeg", thirdIconX, doc.y, { width: iconWidth });
+
+    // // Move down after placing the icons to avoid overlapping with other elements
+    // doc.moveDown(0.5);
+
+    // QR Code - You would need to generate a QR code image
+    const qrCodeImageY = doc.y; // Store the current Y position to place the QR code
+    const qrCodeSize = 50; // Set the QR code size
+
+    doc.image(
+      "images/exported_qrcode_image_600.png",
+      doc.page.width / 2 - qrCodeSize / 2, // Center the QR code
+      qrCodeImageY, // Y position stored earlier
+      {
+        width: qrCodeSize, // Use the size variable here
+      }
+    );
+
+    // Calculate where the text should start, directly below the QR code
+    const textY = qrCodeImageY + qrCodeSize + 10; // Add a little padding below the QR code
+
+    // Center the text based on the entire page width
+    // Make sure the 'width' property is large enough to fit the entire sentence
+    doc.text(
+      "Scan to visit our website",
+      0, // Start text at the beginning of the writable area
+      textY,
+      {
+        width: doc.page.width, // Use the full width of the page to center the text
+        align: "center",
+      }
+    );
 
     // Finalize PDF file
     doc.end();
@@ -135,6 +225,27 @@ const sendDonationConfirmationEmail = async (
 
     // Read the PDF into a buffer
     const pdfBuffer = fs.readFileSync(pdfPath);
+
+    // Read the logo image and convert it to a Base64 string
+    const logoPath = path.join(__dirname, "images", "logoo.png");
+    const logo = fs.readFileSync(logoPath).toString("base64");
+
+    //   // Add social media links and QR code link to the HTML part of the email
+    //   const htmlContent = `
+    //   <!DOCTYPE html>
+    //   <html lang="en">
+    //   <head>
+    //     <!-- Existing head content -->
+    //   </head>
+    //   <body>
+    //     <!-- Existing body content -->
+    //     <p>If you have any questions, please contact us at: <a href="mailto:support@example.com">support@example.com</a> or <a href="tel:+1234567890">(123) 456-7890</a>.</p>
+    //     <p>Follow us on <a href="your-facebook-link">Facebook</a>, <a href="your-twitter-link">Twitter</a>, and <a href="your-instagram-link">Instagram</a>.</p>
+    //     <!-- Rest of the HTML content -->
+    //   </body>
+    //   </html>
+    // `;
+
     const message = {
       to: userEmail,
       from: "change4change.pursuit@gmail.com",
@@ -147,56 +258,115 @@ const sendDonationConfirmationEmail = async (
           type: "application/pdf",
           disposition: "attachment",
         },
+        {
+          content: logo,
+          filename: "logoo.png",
+          type: "image/png",
+          disposition: "inline",
+          content_id: "logoContentId",
+        },
       ],
+      // html: htmlContent,
       html: `
-          <html>
-            <head>
-              <style>
-              body { font-family: Arial, sans-serif; background-color: #f4f4f4; }
-              .header { background-color: #ff7300; padding: 10px; text-align: center; color: white; }
-              .content { margin: 20px; background-color: white; padding: 20px; }
-              .footer { background-color: #f4f4f4; padding: 10px; text-align: center; }
-              .donation-info { background-color: #e6e6e6; padding: 10px; }
-              .button {
-                display: block; /* Block display will allow the button to respect the margin auto */
-                width: calc(25% - 20px); /* Full width minus the padding from the container */
-                background-color: #551aeb;
-                color: white !important;
-                border: none;
-                border-radius: 3px;
-                padding: 10px 15px;
-                cursor: pointer;
-                margin: 10px auto; /* Top and bottom margin of 10px and auto margin on the sides */
-                transition: background-color 0.3s ease;
-                text-decoration: none !important;
-                text-align: center; /* Centers the text inside the button */
-              }
-              </style>
-            </head>
-            <body>
-              <div class="header">
-                <h1>change 4 change</h1>
-              </div>
-              <div class="content">
-                <p><strong>${donorName} thank you for your donation!</strong></p>
-                <div class="donation-info">
-                  <p>Your support is making a difference in the lives of many.</p>
-                  <p>You have donated <strong>$${amount}</strong> with fees included to <strong>${charityName}</strong></p>
-                  <p>Charged Amount: $${amount}</p>
-                  <p>Donation Date: ${new Date().toLocaleDateString()}</p>
-                  <p>Donation Number: ${Math.floor(
-                    Math.random() * 100000000
-                  )}</p>
-                </div>
-                <p>Your official receipt is attached to this email</p>
-              </div>
-              <div class="footer">
-                <p>If you have any questions, please don't hesitate to contact us.</p>
-                <a href="https://change-4-change-frontend.onrender.com/connect-us" style="color: white; text-decoration: none;" class="button">Contact Us</a>
-                </div>
-            </body>
-          </html>
-        `,
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Donation Confirmation</title>
+        <style>
+          body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; }
+          .header { background-color: #f8914e; padding: 10px; text-align: center; color: white; }
+          .header img { height: 50px; }
+          .content { margin: 20px; background-color: white; padding: 20px; border-bottom: 2px solid #eeeeee; }
+          .highlight { color: #551aeb; font-weight: bold; font-size: 1.2em; }
+          .footer { background-color: #f4f4f4; padding: 20px; text-align: center; }
+          .button {
+            background-color: #22b573;
+            color: white;
+            padding: 15px 25px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 18px;
+            margin: 10px auto;
+            cursor: pointer;
+            border-radius: 5px;
+            border: none;
+            transition: background-color 0.3s ease;
+          }
+          .button:hover {
+            background-color: #198c5b;
+          }
+          .testimonial { background-color: #e6e6e6; padding: 15px; margin-top: 20px; font-style: italic; }
+          .signature { font-family: 'Brush Script MT', cursive; font-size: 1.5em; }
+          .attachment-notice { font-size: 0.9em; color: #555; margin-top: 10px; }
+          .donation-details {
+            background-color: #f7f7f7;
+            padding: 15px;
+            margin-top: 15px;
+            font-size: 14px;
+            line-height: 1.6;
+            font-family: Arial, sans-serif;
+            border: 1px solid #dddddd;
+            border-radius: 5px;
+          }
+          .donation-details td {
+            padding: 8px 10px;
+          }
+          .donation-details td:first-child {
+            font-weight: bold;
+            color: #333333;
+            white-space: nowrap;
+          }
+          @media screen and (max-width: 600px) {
+            .header, .content, .footer {
+              padding: 10px;
+            }
+            .button {
+              width: 100%;
+              padding: 15px 0;
+            }
+            .header img { height: auto; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <img src="cid:logoContentId" alt="Change 4 Change Logo">
+        </div>
+        <div class="content">
+          <p><strong>Hello <span class="highlight">${donorName},</span></strong></p>
+          <p>Thank you for your <span class="highlight">${frequencyMessage} donation</span> of <span class="highlight">$${amount}</span> with fees included to <span class="highlight">${charityName}</span>.</p>
+          <p>Your support is making a difference in the lives of many. We are truly grateful for your contribution and your commitment to our cause.</p>
+          <div class="donation-details">
+            <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+              <tr>
+                <td style="padding: 8px 10px; font-weight: bold; white-space: nowrap; width: 50%;">Charged Amount:</td>
+                <td style="padding: 8px 0; width: 50%;">$${amount}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 10px; font-weight: bold; white-space: nowrap;">Donation Date:</td>
+                <td style="padding: 8px 0;">${new Date().toLocaleDateString()}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 10px; font-weight: bold; white-space: nowrap;">Donation Number:</td>
+                <td style="padding: 8px 0;">${Math.floor(
+                  Math.random() * 100000000
+                )}</td>
+              </tr>
+            </table>
+          </div>
+          <p class="attachment-notice">A detailed receipt of your donation is attached to this email. Please keep it for your records.</p>
+        </div>
+        <div class="footer">
+          <p>If you have any questions, please don't hesitate to <a href="https://change-4-change-frontend.onrender.com/connect-us">contact us</a>.</p>
+          <p>Follow us on <a href="#">Social Media</a></p>
+          <p><a href="your-privacy-policy-link">Privacy Policy</a> | <a href="your-unsubscribe-link">Unsubscribe</a></p>
+        </div>
+      </body>
+      </html>
+      `,
     };
     await sgMail.send(message);
     console.log("Confirmation email with PDF receipt sent");
@@ -208,9 +378,45 @@ const sendDonationConfirmationEmail = async (
   }
 };
 
+app.use(cors());
+app.use((req, res, next) => {
+  if (req.originalUrl === "/stripe-webhook") {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
+
+app.get("/", (req, res) => {
+  res.send("Welcome to change4change");
+});
+app.get("/users", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM users");
+    const users = result.rows;
+    res.json(users);
+  } catch (error) {
+    console.error("Error in /users route:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+app.get("/transactions", bodyParser.json(), async (req, res) => {
+  try {
+    console.log("fetching transaction");
+    const result = await pool.query(
+      `SELECT t.amount, t.currency, t.donation_frequency, c.name, t.created_at
+      FROM transactions t 
+      JOIN charities c ON t.charity_id = c.id`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error retrieving transactions", err);
+    res.status(500).json({ message: "Error retrieving transactions" });
+  }
+});
+
 app.post("/login", loginController.login);
 app.post("/register", registerController.register);
-
 app.post(
   "/create-payment-intent",
   bodyParser.json(),
@@ -414,7 +620,6 @@ app.post(
     }
   }
 );
-
 // Stripe Webhook handling
 app.post(
   "/stripe-webhook",
