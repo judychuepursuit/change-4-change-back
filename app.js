@@ -162,35 +162,6 @@ const sendDonationConfirmationEmail = async (
       )
       .moveDown(0.5);
 
-    // // Define the width for each icon and the space between the icons
-    // const iconWidth = 15;
-    // const spaceBetweenIcons = 10;
-
-    // // Calculate the total width that all icons will occupy including the space between them
-    // const totalIconsWidth = 3 * iconWidth + 2 * spaceBetweenIcons;
-
-    // // Calculate the center point of the PDF page
-    // const centerPoint = doc.page.width / 2;
-
-    // // Calculate the starting X position for the first icon so that the icons as a group are centered
-    // const firstIconX = centerPoint - totalIconsWidth / 2;
-
-    // // Place the first social media icon
-    // doc.image("images/fb-logo.jpeg", firstIconX, doc.y, { width: iconWidth });
-
-    // // Calculate X position for the second icon and place it
-    // const secondIconX = firstIconX + iconWidth + spaceBetweenIcons;
-    // doc.image("images/twitter-logo.png", secondIconX, doc.y, {
-    //   width: iconWidth,
-    // });
-
-    // // Calculate X position for the third icon and place it
-    // const thirdIconX = secondIconX + iconWidth + spaceBetweenIcons;
-    // doc.image("images/ig-logo.jpeg", thirdIconX, doc.y, { width: iconWidth });
-
-    // // Move down after placing the icons to avoid overlapping with other elements
-    // doc.moveDown(0.5);
-
     // QR Code - You would need to generate a QR code image
     const qrCodeImageY = doc.y; // Store the current Y position to place the QR code
     const qrCodeSize = 50; // Set the QR code size
@@ -229,22 +200,6 @@ const sendDonationConfirmationEmail = async (
     // Read the logo image and convert it to a Base64 string
     const logoPath = path.join(__dirname, "images", "logoo.png");
     const logo = fs.readFileSync(logoPath).toString("base64");
-
-    //   // Add social media links and QR code link to the HTML part of the email
-    //   const htmlContent = `
-    //   <!DOCTYPE html>
-    //   <html lang="en">
-    //   <head>
-    //     <!-- Existing head content -->
-    //   </head>
-    //   <body>
-    //     <!-- Existing body content -->
-    //     <p>If you have any questions, please contact us at: <a href="mailto:support@example.com">support@example.com</a> or <a href="tel:+1234567890">(123) 456-7890</a>.</p>
-    //     <p>Follow us on <a href="your-facebook-link">Facebook</a>, <a href="your-twitter-link">Twitter</a>, and <a href="your-instagram-link">Instagram</a>.</p>
-    //     <!-- Rest of the HTML content -->
-    //   </body>
-    //   </html>
-    // `;
 
     const message = {
       to: userEmail,

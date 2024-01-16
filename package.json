@@ -24,10 +24,11 @@
     "fs": "^0.0.1-security",
     "pdfkit": "^0.14.0",
     "pg-promise": "^11.5.4",
+    "semver": "^7.5.4",
     "stripe": "^14.3.0",
     "util": "^0.12.5"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "nodemon": "^3.0.2"
   }
 }
